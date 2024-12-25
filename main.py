@@ -13,6 +13,8 @@ DB_USER = os.getenv('DB_USER', 'root')
 DB_PASSWORD = os.getenv('DB_PASSWORD')
 DB_NAME = os.getenv('DB_NAME')
 BACKUP_DIR = os.getenv('BACKUP_DIR')
+REPLICA = os.getenv('REPLICA', False)
+LIMIT = os.getenv('LIMIT', 5)
 
 if not DB_HOST:
     raise ValueError("No database host set")
@@ -35,6 +37,9 @@ if not BACKUP_DIR:
 # if backup directory does not exist, create it
 if not os.path.exists(BACKUP_DIR):
     raise ValueError("Backup directory does not exist")
+
+if REPLICA:
+    print("Replica will be updated")
 
 def export_db():
     # Ensure backup directory exists
@@ -61,6 +66,30 @@ def export_db():
             # Execute the mysqldump command
             subprocess.check_call(dump_command, stdout=backup_file)
         print(f"Database exported successfully to {backup_filepath}")
+
+        # If replica is set, update the replica with the new backup
+        if REPLICA:
+            print("Updating replica")
+            replica_db = DB_NAME + "_replica"
+            replica_dump_command = [
+                'mysql',
+                f'--host={DB_HOST}',
+                f'--port={DB_PORT}',
+                f'--user={DB_USER}',
+                f'--password={DB_PASSWORD}',
+                replica_db
+            ]
+            
+            with open(backup_filepath, 'r') as backup_file:
+                subprocess.check_call(replica_dump_command, stdin=backup_file)
+            print("Replica updated successfully")
+            
+            # Delete old backups
+            files = os.listdir(BACKUP_DIR)
+            files.sort()
+            for file in files[:-int(LIMIT)]:
+                os.remove(os.path.join(BACKUP_DIR, file))
+            print("Old backups deleted")
     except subprocess.CalledProcessError as e:
         print(f"Error exporting database: {e}")
     except Exception as ex:
